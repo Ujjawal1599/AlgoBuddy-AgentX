@@ -144,8 +144,4 @@ MODEL_NAME=gpt-4
 
 ## 🤝 Contributing
 
-This project is developed for the TiDB Agentx Hackathon. Contributions are welcome!
-
-## 📄 License
-
-MIT License 
+This project is developed for the TiDB Agentx Hackathon. Developed by Ujjawal, Rithika, Aniket and Navneet
