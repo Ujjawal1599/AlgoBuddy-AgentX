@@ -4,7 +4,6 @@ import yfinance as yf
 from datetime import datetime, timedelta
 from typing import Dict, Any, List
 import asyncio
-import exec
 import io
 import sys
 from contextlib import redirect_stdout, redirect_stderr

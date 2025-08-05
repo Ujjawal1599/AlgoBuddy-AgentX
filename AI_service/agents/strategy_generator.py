@@ -2,17 +2,10 @@ import os
 import asyncio
 from typing import List, Dict, Any
 from openai import AsyncOpenAI
-from langchain_openai import ChatOpenAI
-from langchain.schema import HumanMessage, SystemMessage
 
 class StrategyGeneratorAgent:
     def __init__(self):
         self.client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        self.llm = ChatOpenAI(
-            model="gpt-4",
-            temperature=0.7,
-            openai_api_key=os.getenv("OPENAI_API_KEY")
-        )
         
     async def generate_strategy(
         self,

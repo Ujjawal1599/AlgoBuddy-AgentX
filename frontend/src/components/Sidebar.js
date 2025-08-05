@@ -4,7 +4,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import {
   DashboardOutlined,
   BarChartOutlined,
-  TradingViewOutlined,
+  LineChartOutlined,
   WalletOutlined,
   ExperimentOutlined,
   SettingOutlined
@@ -29,7 +29,7 @@ const Sidebar = () => {
     },
     {
       key: '/trading',
-      icon: <TradingViewOutlined />,
+      icon: <LineChartOutlined />,
       label: 'Trading',
     },
     {

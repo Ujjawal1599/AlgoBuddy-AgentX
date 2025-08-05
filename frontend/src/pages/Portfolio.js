@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Card, Row, Col, Statistic, Table, Tag, Progress, PieChart, Pie, Cell, ResponsiveContainer } from 'antd';
+import { Card, Row, Col, Statistic, Table, Tag, Progress } from 'antd';
+import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import { DollarOutlined, RiseOutlined, FallOutlined, WalletOutlined } from '@ant-design/icons';
 
 const Portfolio = () => {
@@ -150,7 +151,6 @@ const Portfolio = () => {
             <Statistic
               title="Today's P&L"
               value={portfolioData.dailyPnL}
-              prefix={<DollarOutlined />}
               valueStyle={{ color: portfolioData.dailyPnL >= 0 ? '#3f8600' : '#cf1322' }}
               prefix={portfolioData.dailyPnL >= 0 ? <RiseOutlined /> : <FallOutlined />}
             />

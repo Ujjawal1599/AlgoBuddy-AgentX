@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List, Dict, Any
 from pydantic import BaseModel
 from datetime import datetime, timedelta
-import aiohttp
+import httpx
 import os
 
 from config.database import get_db

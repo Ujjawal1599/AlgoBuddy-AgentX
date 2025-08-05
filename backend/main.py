@@ -5,7 +5,7 @@ from typing import Dict, Any, List, Optional
 import uvicorn
 import os
 from dotenv import load_dotenv
-import aiohttp
+import httpx
 import asyncio
 
 from api.strategies import router as strategies_router
@@ -44,19 +44,19 @@ class AIServiceClient:
         self.base_url = os.getenv("AI_SERVICE_URL", "http://localhost:8001")
     
     async def generate_strategy(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(f"{self.base_url}/generate-strategy", json=request_data) as response:
-                return await response.json()
+        async with httpx.AsyncClient() as client:
+            response = await client.post(f"{self.base_url}/generate-strategy", json=request_data)
+            return response.json()
     
     async def backtest_strategy(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(f"{self.base_url}/backtest-strategy", json=request_data) as response:
-                return await response.json()
+        async with httpx.AsyncClient() as client:
+            response = await client.post(f"{self.base_url}/backtest-strategy", json=request_data)
+            return response.json()
     
     async def evaluate_strategy(self, backtest_results: Dict[str, Any]) -> Dict[str, Any]:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(f"{self.base_url}/evaluate-strategy", json=backtest_results) as response:
-                return await response.json()
+        async with httpx.AsyncClient() as client:
+            response = await client.post(f"{self.base_url}/evaluate-strategy", json=backtest_results)
+            return response.json()
 
 ai_client = AIServiceClient()
 
