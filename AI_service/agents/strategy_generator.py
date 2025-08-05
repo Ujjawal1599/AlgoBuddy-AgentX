@@ -1,11 +1,29 @@
 import os
 import asyncio
 from typing import List, Dict, Any
-from openai import AsyncOpenAI
+
+# Try to import OpenAI, but don't fail if not available
+try:
+    from openai import AsyncOpenAI
+    OPENAI_AVAILABLE = True
+except ImportError:
+    OPENAI_AVAILABLE = False
 
 class StrategyGeneratorAgent:
     def __init__(self):
-        self.client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        self.openai_api_key = os.getenv("OPENAI_API_KEY")
+        
+        # Only initialize OpenAI client if API key is available
+        if OPENAI_AVAILABLE and self.openai_api_key:
+            try:
+                self.client = AsyncOpenAI(api_key=self.openai_api_key)
+                self.use_openai = True
+            except Exception as e:
+                print(f"Warning: Could not initialize OpenAI client: {e}")
+                self.use_openai = False
+        else:
+            self.use_openai = False
+            print("Warning: OpenAI API key not found. Using fallback strategy generation.")
         
     async def generate_strategy(
         self,
@@ -16,7 +34,25 @@ class StrategyGeneratorAgent:
         capital: float = 100000
     ) -> str:
         """
-        Generate a trading strategy using AI
+        Generate a trading strategy using AI or fallback
+        """
+        
+        if self.use_openai:
+            return await self._generate_ai_strategy(symbol, indicators, timeframe, risk_level, capital)
+        else:
+            print('GENERATING FALLBACK ALGOOOOOO')
+            return self._generate_fallback_strategy(symbol, indicators, risk_level, capital)
+    
+    async def _generate_ai_strategy(
+        self,
+        symbol: str,
+        indicators: List[str],
+        timeframe: str = "1d",
+        risk_level: str = "medium",
+        capital: float = 100000
+    ) -> str:
+        """
+        Generate a trading strategy using OpenAI
         """
         
         # Create system prompt
@@ -53,7 +89,7 @@ class StrategyGeneratorAgent:
         try:
             # Generate strategy using OpenAI
             response = await self.client.chat.completions.create(
-                model="gpt-4",
+                model="gpt-4o-mini",
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
@@ -63,7 +99,7 @@ class StrategyGeneratorAgent:
             )
             
             strategy_code = response.choices[0].message.content
-            
+            print('strategy_code',strategy_code)
             # Clean up the response to extract only the Python code
             if "```python" in strategy_code:
                 strategy_code = strategy_code.split("```python")[1].split("```")[0]
@@ -73,7 +109,9 @@ class StrategyGeneratorAgent:
             return strategy_code.strip()
             
         except Exception as e:
-            # Fallback to a basic strategy template
+            print(f"Error generating AI strategy: {e}")
+            # Fallback to template strategy
+            print('GENERATING FALLBACK ALGOOOO')
             return self._generate_fallback_strategy(symbol, indicators, risk_level, capital)
     
     def _generate_fallback_strategy(
@@ -105,21 +143,24 @@ def trading_strategy(data, capital, risk_level):
     Trading strategy for {symbol} using {', '.join(indicators)}
     \"\"\"
     
+    # Ensure we have the required columns (handle both 'close' and 'Close')
+    close_col = 'Close' if 'Close' in data.columns else 'close'
+    
     # Calculate technical indicators
     if 'RSI' in {indicators}:
-        data['rsi'] = ta.momentum.RSIIndicator(data['close']).rsi()
+        data['rsi'] = ta.momentum.RSIIndicator(data[close_col]).rsi()
     
     if 'MACD' in {indicators}:
-        macd = ta.trend.MACD(data['close'])
+        macd = ta.trend.MACD(data[close_col])
         data['macd'] = macd.macd()
         data['macd_signal'] = macd.macd_signal()
     
     if 'SMA' in {indicators}:
-        data['sma_20'] = ta.trend.SMAIndicator(data['close'], window=20).sma_indicator()
-        data['sma_50'] = ta.trend.SMAIndicator(data['close'], window=50).sma_indicator()
+        data['sma_20'] = ta.trend.SMAIndicator(data[close_col], window=20).sma_indicator()
+        data['sma_50'] = ta.trend.SMAIndicator(data[close_col], window=50).sma_indicator()
     
     if 'BB' in {indicators}:
-        bb = ta.volatility.BollingerBands(data['close'])
+        bb = ta.volatility.BollingerBands(data[close_col])
         data['bb_upper'] = bb.bollinger_hband()
         data['bb_lower'] = bb.bollinger_lband()
     
@@ -128,7 +169,7 @@ def trading_strategy(data, capital, risk_level):
     confidence = 0.5
     
     # RSI strategy
-    if 'RSI' in {indicators}:
+    if 'RSI' in {indicators} and 'rsi' in data.columns:
         if data['rsi'].iloc[-1] < 30:
             signal = 'BUY'
             confidence = 0.8
@@ -137,12 +178,38 @@ def trading_strategy(data, capital, risk_level):
             confidence = 0.8
     
     # MACD strategy
-    if 'MACD' in {indicators}:
+    if 'MACD' in {indicators} and 'macd' in data.columns and 'macd_signal' in data.columns:
         if data['macd'].iloc[-1] > data['macd_signal'].iloc[-1]:
             if signal == 'HOLD':
                 signal = 'BUY'
                 confidence = 0.7
         elif data['macd'].iloc[-1] < data['macd_signal'].iloc[-1]:
+            if signal == 'HOLD':
+                signal = 'SELL'
+                confidence = 0.7
+    
+    # SMA strategy
+    if 'SMA' in {indicators} and 'sma_20' in data.columns and 'sma_50' in data.columns:
+        if data['sma_20'].iloc[-1] > data['sma_50'].iloc[-1]:
+            if signal == 'HOLD':
+                signal = 'BUY'
+                confidence = 0.6
+        elif data['sma_20'].iloc[-1] < data['sma_50'].iloc[-1]:
+            if signal == 'HOLD':
+                signal = 'SELL'
+                confidence = 0.6
+    
+    # Bollinger Bands strategy
+    if 'BB' in {indicators} and 'bb_upper' in data.columns and 'bb_lower' in data.columns:
+        current_price = data[close_col].iloc[-1]
+        bb_upper = data['bb_upper'].iloc[-1]
+        bb_lower = data['bb_lower'].iloc[-1]
+        
+        if current_price <= bb_lower:
+            if signal == 'HOLD':
+                signal = 'BUY'
+                confidence = 0.7
+        elif current_price >= bb_upper:
             if signal == 'HOLD':
                 signal = 'SELL'
                 confidence = 0.7

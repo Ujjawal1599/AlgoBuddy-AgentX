@@ -1,11 +1,29 @@
 import os
 from typing import Dict, Any, List
-from openai import AsyncOpenAI
 import asyncio
+
+# Try to import OpenAI, but don't fail if not available
+try:
+    from openai import AsyncOpenAI
+    OPENAI_AVAILABLE = True
+except ImportError:
+    OPENAI_AVAILABLE = False
 
 class EvaluatorAgent:
     def __init__(self):
-        self.client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        self.openai_api_key = os.getenv("OPENAI_API_KEY")
+        
+        # Only initialize OpenAI client if API key is available
+        if OPENAI_AVAILABLE and self.openai_api_key:
+            try:
+                self.client = AsyncOpenAI(api_key=self.openai_api_key)
+                self.use_openai = True
+            except Exception as e:
+                print(f"Warning: Could not initialize OpenAI client: {e}")
+                self.use_openai = False
+        else:
+            self.use_openai = False
+            print("Warning: OpenAI API key not found. Using fallback evaluation.")
         
         # Define evaluation criteria
         self.criteria = {
@@ -227,6 +245,13 @@ class EvaluatorAgent:
     ) -> Dict[str, Any]:
         """Generate AI-powered recommendations for strategy improvement"""
         
+        if not self.use_openai:
+            return {
+                "ai_analysis": "AI recommendations not available - using fallback analysis",
+                "key_insights": self._extract_key_insights(metrics),
+                "improvement_areas": self._identify_improvement_areas(metrics)
+            }
+        
         try:
             # Create prompt for AI analysis
             prompt = f"""
@@ -252,7 +277,7 @@ class EvaluatorAgent:
             """
             
             response = await self.client.chat.completions.create(
-                model="gpt-4",
+                model="gpt-4o-mini",
                 messages=[
                     {"role": "system", "content": "You are an expert algorithmic trading analyst. Provide specific, actionable recommendations for strategy improvement."},
                     {"role": "user", "content": prompt}
@@ -270,8 +295,9 @@ class EvaluatorAgent:
             }
             
         except Exception as e:
+            print(f"Error generating AI recommendations: {e}")
             return {
-                "ai_analysis": "Unable to generate AI recommendations",
+                "ai_analysis": "Unable to generate AI recommendations - using fallback analysis",
                 "error": str(e),
                 "key_insights": self._extract_key_insights(metrics),
                 "improvement_areas": self._identify_improvement_areas(metrics)
