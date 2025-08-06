@@ -63,29 +63,89 @@ class BacktestAgent:
                 "status": "failed"
             }
     
+    def _standardize_column_names(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Standardize column names to lowercase for consistency"""
+        if df.empty:
+            return df
+        
+        # Create a copy to avoid modifying original
+        df_std = df.copy()
+        
+        # Standardize column names to lowercase
+        column_mapping = {
+            'Date': 'date',
+            'Open': 'open',
+            'High': 'high', 
+            'Low': 'low',
+            'Close': 'close',
+            'Volume': 'volume',
+            'Adj Close': 'adj_close'
+        }
+        
+        # Rename columns that exist
+        for old_name, new_name in column_mapping.items():
+            if old_name in df_std.columns:
+                df_std = df_std.rename(columns={old_name: new_name})
+        
+        # Ensure required columns exist
+        required_columns = ['date', 'open', 'high', 'low', 'close', 'volume']
+        missing_columns = [col for col in required_columns if col not in df_std.columns]
+        
+        if missing_columns:
+            print(f"⚠️  Missing columns: {missing_columns}")
+            # Try to map from existing columns
+            if 'Close' in df_std.columns and 'close' not in df_std.columns:
+                df_std['close'] = df_std['Close']
+            if 'Open' in df_std.columns and 'open' not in df_std.columns:
+                df_std['open'] = df_std['Open']
+            if 'High' in df_std.columns and 'high' not in df_std.columns:
+                df_std['high'] = df_std['High']
+            if 'Low' in df_std.columns and 'low' not in df_std.columns:
+                df_std['low'] = df_std['Low']
+            if 'Volume' in df_std.columns and 'volume' not in df_std.columns:
+                df_std['volume'] = df_std['Volume']
+        
+        # Final check for required columns
+        final_missing = [col for col in required_columns if col not in df_std.columns]
+        if final_missing:
+            raise ValueError(f"Missing required columns after standardization: {final_missing}")
+        
+        print(f"✅ Standardized columns: {list(df_std.columns)}")
+        return df_std
+
     async def _get_historical_data(self, symbol: str, start_date: str, end_date: str) -> pd.DataFrame:
         """Download historical data from multiple sources"""
         try:
-            # Try multiple data sources (Quandl temporarily disabled due to 403 errors)
+            # Prioritize data sources by reliability
             data_sources = [
-                ("Yahoo Finance", self._get_yahoo_data),
-                ("Alpha Vantage", self._get_alpha_vantage_data),
-                ("CSV Data", self._get_csv_data)
+                ("Yahoo Finance", self._get_yahoo_data),  # Most reliable for most symbols
+                # ("CSV Data", self._get_csv_data),        # Good fallback with mock data
+                ("Alpha Vantage", self._get_alpha_vantage_data)  # Requires API key, rate limited
                 # ("Quandl", self._get_quandl_data),  # Temporarily disabled
             ]
             
+            errors = []
             for source_name, data_func in data_sources:
                 try:
-                    print(f"Trying {source_name} for {symbol}...")
+                    print(f"🔄 Trying {source_name} for {symbol}...")
                     data = await data_func(symbol, start_date, end_date)
-                    if not data.empty:
-                        print(f"✓ Successfully got data from {source_name}")
+                    if not data.empty and len(data) > 0:
+                        # Standardize column names
+                        data = self._standardize_column_names(data)
+                        print(f"✅ Successfully got {len(data)} data points from {source_name}")
                         return data
+                    else:
+                        print(f"⚠️  {source_name} returned empty data")
+                        errors.append(f"{source_name}: Empty data")
                 except Exception as e:
-                    print(f"✗ {source_name} failed: {e}")
+                    error_msg = f"{source_name}: {str(e)}"
+                    print(f"❌ {error_msg}")
+                    errors.append(error_msg)
                     continue
             
-            raise ValueError(f"No data found for {symbol} from any data source")
+            # If all sources failed, provide helpful error message
+            error_summary = "\n".join(errors)
+            raise ValueError(f"No data found for {symbol} from any data source.\nErrors:\n{error_summary}")
             
         except Exception as e:
             print(f"Error in _get_historical_data: {e}")
@@ -194,28 +254,93 @@ class BacktestAgent:
             raise Exception(f"Yahoo Finance failed: {e}")
     
     async def _get_csv_data(self, symbol: str, start_date: str, end_date: str) -> pd.DataFrame:
-        """Get data from CSV files (if available)"""
+        """Get data from CSV files or generate mock data as fallback"""
         try:
             import os
+            import numpy as np
+            from datetime import datetime, timedelta
+            
             csv_path = f"data/{symbol}.csv"
             if os.path.exists(csv_path):
+                print(f"📁 Found CSV file: {csv_path}")
                 data = pd.read_csv(csv_path)
                 data['Date'] = pd.to_datetime(data['Date'])
                 data = data[(data['Date'] >= start_date) & (data['Date'] <= end_date)]
-                return data
-            else:
-                raise ValueError("CSV file not found")
+                if len(data) > 0:
+                    return data
+                else:
+                    print(f"⚠️  CSV file exists but no data in date range {start_date} to {end_date}")
+            
+            # Generate mock data as reliable fallback
+            print(f"🔄 Generating mock data for {symbol} from {start_date} to {end_date}")
+            
+            start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+            end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+            
+            # Generate daily data points
+            dates = []
+            current_date = start_dt
+            while current_date <= end_dt:
+                if current_date.weekday() < 5:  # Monday to Friday only
+                    dates.append(current_date)
+                current_date += timedelta(days=1)
+            
+            if not dates:
+                raise ValueError("No trading days in date range")
+            
+            # Generate realistic price data
+            np.random.seed(hash(symbol) % 1000)  # Consistent seed for same symbol
+            
+            # Base price varies by symbol
+            base_prices = {
+                "AAPL": 150, "GOOGL": 2800, "MSFT": 300, "TSLA": 250,
+                "AMZN": 3300, "META": 350, "NVDA": 800, "NFLX": 500,
+                "TCS": 3500, "INFY": 1500, "RELIANCE": 2500, "HDFCBANK": 1600
+            }
+            base_price = base_prices.get(symbol, 100)
+            
+            # Generate price series with realistic volatility
+            prices = [base_price]
+            for i in range(1, len(dates)):
+                # Daily return with some volatility
+                daily_return = np.random.normal(0.001, 0.02)  # 0.1% mean, 2% std
+                new_price = prices[-1] * (1 + daily_return)
+                prices.append(max(new_price, base_price * 0.5))  # Prevent negative prices
+            
+            # Generate OHLCV data
+            data_points = []
+            for i, (date, close_price) in enumerate(zip(dates, prices)):
+                # Generate realistic OHLC from close price
+                volatility = np.random.uniform(0.01, 0.03)
+                high = close_price * (1 + np.random.uniform(0, volatility))
+                low = close_price * (1 - np.random.uniform(0, volatility))
+                open_price = prices[i-1] if i > 0 else close_price
+                volume = np.random.randint(1000000, 10000000)
+                
+                data_points.append({
+                    'Date': date,
+                    'Open': round(open_price, 2),
+                    'High': round(high, 2),
+                    'Low': round(low, 2),
+                    'Close': round(close_price, 2),
+                    'Volume': volume
+                })
+            
+            df = pd.DataFrame(data_points)
+            print(f"✅ Generated {len(df)} mock data points for {symbol}")
+            return df
+            
         except Exception as e:
             raise Exception(f"CSV data failed: {e}")
     
     async def _get_alpha_vantage_data(self, symbol: str, start_date: str, end_date: str) -> pd.DataFrame:
-        """Get data from Alpha Vantage API using TIME_SERIES_INTRADAY"""
+        """Get data from Alpha Vantage API using TIME_SERIES_DAILY"""
         try:
             import requests
             import os
             
             api_key = os.getenv("ALPHA_VANTAGE_API_KEY")
-            print('api_key',api_key)
+            print('Alpha Vantage API key found:', bool(api_key))
             if not api_key:
                 print("Alpha Vantage API key not found. Skipping Alpha Vantage.")
                 raise ValueError("Alpha Vantage API key not found")
@@ -223,13 +348,13 @@ class BacktestAgent:
             # Alpha Vantage symbol mapping for stocks
             alpha_vantage_symbols = {
                 # Indian stocks
-                "TCS": "TCS",  # This one works
-                "INFY": "INFY",  # Try without prefix
-                "WIPRO": "WIPRO",
-                "HCLTECH": "HCLTECH",
-                "SUNPHARMA": "SUNPHARMA",
-                "TITAN": "TITAN",
-                "NESTLEIND": "NESTLEIND",
+                "TCS": "TCS.BSE",  # Add exchange suffix for Indian stocks
+                "INFY": "INFY.BSE",
+                "WIPRO": "WIPRO.BSE",
+                "HCLTECH": "HCLTECH.BSE",
+                "SUNPHARMA": "SUNPHARMA.BSE",
+                "TITAN": "TITAN.BSE",
+                "NESTLEIND": "NESTLEIND.BSE",
                 "RELIANCE": "RELIANCE.BSE",
                 # US stocks
                 "AAPL": "AAPL",
@@ -244,25 +369,42 @@ class BacktestAgent:
                 "INTC": "INTC"
             }
             
-            alpha_symbol = alpha_vantage_symbols.get(symbol, symbol)  # Try without prefix first
-            print(f"Trying Alpha Vantage INTRADAY with symbol: {alpha_symbol}")
+            alpha_symbol = alpha_vantage_symbols.get(symbol, symbol)
+            print(f"Trying Alpha Vantage DAILY with symbol: {alpha_symbol}")
             
+            # Use TIME_SERIES_DAILY instead of INTRADAY to avoid rate limits
             url = "https://www.alphavantage.co/query"
             params = {
-                "function": "TIME_SERIES_INTRADAY",
+                "function": "TIME_SERIES_DAILY",
                 "symbol": alpha_symbol,
-                "interval": "5min",  # 5-minute intervals
-                "apikey": api_key,
-                "outputsize": "full",  # Get full data
-                "adjusted": "true",  # Get adjusted data
-                "extended_hours": "false"  # Regular trading hours only
+                "outputsize": "full",  # Get full history
+                "apikey": api_key
             }
             
-            response = requests.get(url, params=params)
+            response = requests.get(url, params=params, timeout=10)
+            print('response',response)
+            if response.status_code != 200:
+                raise ValueError(f"Alpha Vantage API returned status code: {response.status_code}")
+            
             data = response.json()
-            print('data',data)
-            if "Time Series (5min)" in data:
-                time_series = data["Time Series (5min)"]
+            print('dataaaaaaaaaaa',data)
+            print('Alpha Vantage response keys:', list(data.keys()))
+            
+            # Check for API errors
+            if "Error Message" in data:
+                error_msg = data["Error Message"]
+                print(f"Alpha Vantage API error: {error_msg}")
+                raise ValueError(f"Alpha Vantage API error: {error_msg}")
+            
+            if "Note" in data:
+                # Rate limit exceeded
+                note = data["Note"]
+                print(f"Alpha Vantage rate limit: {note}")
+                raise ValueError(f"Alpha Vantage rate limit: {note}")
+            
+            # Check for daily time series
+            if "Time Series (Daily)" in data:
+                time_series = data["Time Series (Daily)"]
                 df_data = []
                 
                 for timestamp, values in time_series.items():
@@ -285,16 +427,22 @@ class BacktestAgent:
                     df = pd.DataFrame(df_data)
                     # Sort by date
                     df = df.sort_values('Date')
-                    print(f"Successfully got {len(df)} intraday data points from Alpha Vantage")
+                    print(f"Successfully got {len(df)} daily data points from Alpha Vantage")
                     return df
                 else:
                     raise ValueError("No data found in specified date range")
             else:
-                error_msg = data.get("Error Message", "Unknown error")
-                print(f"Alpha Vantage returned error: {error_msg}")
-                raise ValueError(f"Alpha Vantage error: {error_msg}")
+                # Try alternative data structure
+                if "Time Series (1min)" in data:
+                    print("Found intraday data, but daily data preferred")
+                    raise ValueError("Intraday data not suitable for daily backtesting")
+                else:
+                    available_keys = list(data.keys())
+                    print(f"Unexpected Alpha Vantage response structure. Available keys: {available_keys}")
+                    raise ValueError(f"Unexpected Alpha Vantage response structure: {available_keys}")
                 
         except Exception as e:
+            print(f"Alpha Vantage failed: {e}")
             raise Exception(f"Alpha Vantage failed: {e}")
 
     
@@ -343,8 +491,9 @@ class BacktestAgent:
                 confidence = strategy_result.get('confidence', 0.5)
                 position_size = strategy_result.get('position_size', capital * 0.1)
                 
-                current_price = current_data.iloc[-1]['Close']
-                current_date = current_data.iloc[-1]['Date']
+                # Use standardized column names
+                current_price = current_data.iloc[-1]['close']
+                current_date = current_data.iloc[-1]['date']
                 
                 # Execute trades based on signal
                 if signal == 'BUY' and position == 0 and confidence > 0.6:
@@ -388,18 +537,24 @@ class BacktestAgent:
                     'price': current_price
                 })
                 
+            except KeyError as e:
+                print(f"Column name error in strategy execution: {e}")
+                print(f"Available columns: {list(current_data.columns)}")
+                print(f"Data shape: {current_data.shape}")
+                continue
             except Exception as e:
                 print(f"Error in strategy execution: {e}")
+                print(f"Available columns: {list(current_data.columns)}")
                 continue
         
         # Close any remaining position
         if position > 0:
-            final_price = data.iloc[-1]['Close']
+            final_price = data.iloc[-1]['close']
             final_revenue = position * final_price
             capital += final_revenue
             
             trades.append({
-                'date': data.iloc[-1]['Date'],
+                'date': data.iloc[-1]['date'],
                 'action': 'SELL',
                 'shares': position,
                 'price': final_price,

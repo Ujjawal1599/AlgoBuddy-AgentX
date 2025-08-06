@@ -143,8 +143,20 @@ def trading_strategy(data, capital, risk_level):
     Trading strategy for {symbol} using {', '.join(indicators)}
     \"\"\"
     
-    # Ensure we have the required columns (handle both 'close' and 'Close')
-    close_col = 'Close' if 'Close' in data.columns else 'close'
+    # Use standardized lowercase column names
+    close_col = 'close'
+    open_col = 'open'
+    high_col = 'high'
+    low_col = 'low'
+    volume_col = 'volume'
+    
+    # Ensure required columns exist
+    required_columns = [close_col, open_col, high_col, low_col, volume_col]
+    missing_columns = [col for col in required_columns if col not in data.columns]
+    if missing_columns:
+        print(f"Missing columns: {{missing_columns}}")
+        print(f"Available columns: {{list(data.columns)}}")
+        return {{'signal': 'HOLD', 'confidence': 0.0, 'position_size': 0}}
     
     # Calculate technical indicators
     if 'RSI' in {indicators}:
