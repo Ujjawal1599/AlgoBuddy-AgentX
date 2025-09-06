@@ -1,8 +1,12 @@
+from dotenv import load_dotenv
+load_dotenv()
+
 import os
 from sqlalchemy import create_engine, MetaData
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import QueuePool
+import certifi
 
 # Database configuration
 DATABASE_URL = os.getenv(
@@ -10,9 +14,15 @@ DATABASE_URL = os.getenv(
     "mysql+pymysql://root:@localhost:4000/trading_db"
 )
 
+print(f"Connecting to database at {DATABASE_URL}")
 # Create engine
 engine = create_engine(
     DATABASE_URL,
+    connect_args={
+        "ssl": {
+            "ca": certifi.where()
+        }
+    },
     poolclass=QueuePool,
     pool_size=10,
     max_overflow=20,
@@ -50,4 +60,4 @@ def get_db():
     try:
         yield db
     finally:
-        db.close() 
+        db.close()

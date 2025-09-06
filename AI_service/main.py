@@ -11,11 +11,15 @@ from agents.backtest_agent import BacktestAgent
 from agents.evaluator_agent import EvaluatorAgent
 from agents.risk_manager import RiskManagerAgent
 from services.strategy_service import StrategyService
+from api.news import router as news_router
 
 # Load environment variables
 load_dotenv()
 
 app = FastAPI(title="TiDB Agentx AI Service", version="1.0.0")
+
+# Include routers
+app.include_router(news_router)
 
 # Initialize agents
 strategy_generator = StrategyGeneratorAgent()

@@ -9,9 +9,13 @@ try:
 except ImportError:
     OPENAI_AVAILABLE = False
 
+# Import news service
+from services.news_service import NewsService
+
 class StrategyGeneratorAgent:
     def __init__(self):
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
+        self.news_service = NewsService()
         
         # Only initialize OpenAI client if API key is available
         if OPENAI_AVAILABLE and self.openai_api_key:
@@ -31,14 +35,15 @@ class StrategyGeneratorAgent:
         indicators: List[str],
         timeframe: str = "1d",
         risk_level: str = "medium",
-        capital: float = 100000
+        capital: float = 100000,
+        include_news: bool = True
     ) -> str:
         """
         Generate a trading strategy using AI or fallback
         """
         
         if self.use_openai:
-            return await self._generate_ai_strategy(symbol, indicators, timeframe, risk_level, capital)
+            return await self._generate_ai_strategy(symbol, indicators, timeframe, risk_level, capital, include_news)
         else:
             print('GENERATING FALLBACK ALGOOOOOO')
             return self._generate_fallback_strategy(symbol, indicators, risk_level, capital)
@@ -49,11 +54,21 @@ class StrategyGeneratorAgent:
         indicators: List[str],
         timeframe: str = "1d",
         risk_level: str = "medium",
-        capital: float = 100000
+        capital: float = 100000,
+        include_news: bool = True
     ) -> str:
         """
         Generate a trading strategy using OpenAI
         """
+        
+        # Get news data if requested
+        news_context = ""
+        if include_news:
+            try:
+                news_context = await self.news_service.get_news_for_algo_generation(symbol, days_back=7)
+            except Exception as e:
+                print(f"Warning: Could not fetch news data: {e}")
+                news_context = "News data unavailable"
         
         # Create system prompt
         system_prompt = f"""
@@ -70,7 +85,8 @@ class StrategyGeneratorAgent:
         2. Generate buy/sell signals
         3. Include position sizing based on risk level
         4. Include stop-loss and take-profit logic
-        5. Return a dictionary with 'signal' (BUY/SELL/HOLD) and 'confidence' (0-1)
+        5. Consider news sentiment and market sentiment in decision making
+        6. Return a dictionary with 'signal' (BUY/SELL/HOLD) and 'confidence' (0-1)
         
         Return ONLY the Python function code, no explanations.
         """
@@ -83,9 +99,12 @@ class StrategyGeneratorAgent:
         - Risk Level: {risk_level}
         - Capital: ${capital:,.2f}
         
+        {news_context}
+        
         The function should be named 'trading_strategy' and take parameters: (data, capital, risk_level)
         """
-        
+        print('user_prompt',user_prompt)
+        print('system_prompt',system_prompt)
         try:
             # Generate strategy using OpenAI
             response = await self.client.chat.completions.create(
